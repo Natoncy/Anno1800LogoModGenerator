@@ -1,0 +1,45 @@
+﻿@page "/"
+
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Anno 1800 Logo Mod Generator</PageTitle>
+
+<h1>Anno 1800 Logo Mod Generator</h1>
+
+<h3>Settings</h3>
+
+<div class="row">
+
+    <div class="col-md-12 mb-3">
+        <label class="form-label">Starting Guid for logos (Must be set to your Guid range if you publish this mod see: <a href="https://github.com/anno-mods/GuidRanges" target="_blank">GuidRanges</a>)</label>
+        <NumberInput @bind-Value="@StartingGuid" />
+    </div>
+</div>
+
+<hr />
+
+<div class="row">
+    <div class="col-md-12 mb-3">
+        <label class="form-label">Images (.png only, multiple images possible) Should only contain white pixels, background should be transparent, should be 512x512 (other sizes will be resized).</label>
+        <InputFile OnChange="UploadFile" class="form-control" multiple="multiple" accept="image/png" />
+    </div>
+    <div class="col-md-12 mb-3">
+        <Button Color="ButtonColor.Primary" @onclick="DownloadModAsync">Generate Mod</Button>
+    </div>
+</div>
+
+<hr />
+
+<h3 class="mb-5">Icons</h3>
+
+<div class="row">
+    @for (var i = 0; i < Logos.Count; i++)
+    {
+        var index = i;
+
+        <div class="col d-flex justify-content-center mb-3">
+            <img src="@Logos[index].Base64" alt="Image" class="icon-image" />
+        </div>
+
+    }
+</div>
