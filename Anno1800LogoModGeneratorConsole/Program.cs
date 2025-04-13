@@ -11,10 +11,10 @@ namespace Anno1800LogoModGenerator
 {
     internal class Program
     {
-        public const int LargeSize = 512;
-        public const int SmallSize = 128;
+        private const int LargeSize = 512;
+        private const int SmallSize = 128;
 
-        public static int StartingGuid { get; set; } = StartPersonalModRange; // Starting personal use GUID range https://github.com/anno-mods/GuidRanges
+        private static int StartingGuid { get; set; } = StartPersonalModRange; // Starting personal use GUID range https://github.com/anno-mods/GuidRanges
 
         private const int StartModRange = 1337471142;
         private const int StartPersonalModRange = 2001000000;
@@ -29,6 +29,7 @@ namespace Anno1800LogoModGenerator
                     if (guid < StartModRange)
                     {
                         Console.WriteLine($"ERROR: Starting Guid not in the mod range (>={StartModRange})");
+                        OnClose();
                         return;
                     }
                     StartingGuid = guid;
@@ -36,6 +37,7 @@ namespace Anno1800LogoModGenerator
                 else
                 {
                     Console.WriteLine($"ERROR: Input value not a valid number");
+                    OnClose();
                     return;
                 }
             }
@@ -56,12 +58,17 @@ namespace Anno1800LogoModGenerator
 
             Console.WriteLine();
             Console.WriteLine($"Mod created successfully using the following guids: {string.Join(", ", usedGuids)}");
+            OnClose();
+        }
+
+        private static void OnClose()
+        {
             Console.WriteLine();
             Console.WriteLine("Press any key to close");
             Console.ReadKey();
         }
 
-        public static (byte[], int[]) CreateModZip()
+        private static (byte[], int[]) CreateModZip()
         {
             var inputFolderPath = Path.Combine(Directory.GetCurrentDirectory(), "input");
             Directory.CreateDirectory(inputFolderPath);
