@@ -1,55 +1,46 @@
-﻿using Anno1800LogoModGenerator;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.JSInterop;
-using Microsoft.VisualBasic;
-using SixLabors.ImageSharp;
+﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
-using System.IO;
-using System.IO.Compression;
 using System.IO.Compression;
 using System.Text;
-using System.Text;
 
 
-
-namespace Anno1800LogoModGenerator.Pages
+namespace Anno1800LogoModGeneratorConsole
 {
-    public partial class Index : ComponentBase
+    internal class Program
     {
-        [Inject]
-        public IJSRuntime JS { get; set; }
+        public const int LargeSize = 512;
+        public const int SmallSize = 128;
 
+        public static int StartingGuid { get; set; } = 2001000000; // Starting personal use GUID range https://github.com/anno-mods/GuidRanges
 
-
-
-        protected override void OnInitialized()
+        static void Main(string[] args)
         {
-        }
-
-        private async Task UploadFile(InputFileChangeEventArgs e)
-        {
-            foreach (var file in e.GetMultipleFiles(int.MaxValue))
+            if (args.Length > 0 && int.TryParse(args[0], out int guid))
             {
-                
+                StartingGuid = guid;
             }
-        }
 
-        public async Task DownloadModAsync()
-        {
+
             byte[] zipBytes = CreateModZip();
-            string base64 = Convert.ToBase64String(zipBytes);
 
-            await JS.InvokeVoidAsync("window.downloadFileFromBase64", "logo_mod.zip", base64);
+            File.WriteAllBytes("logo_mod.zip", zipBytes);
         }
 
-        public byte[] CreateModZip()
+        public static byte[] CreateModZip()
         {
+            var inputFolderPath = Path.Combine(Directory.GetCurrentDirectory(), "input");
+            Directory.CreateDirectory(inputFolderPath);
+
+            var logoFiles = Directory.GetFiles(inputFolderPath)
+                .Where(x => x.EndsWith(".png"))
+                .OrderBy(x => x)
+                .Select((x, i) => (x, StartingGuid + i))
+                .ToList();
+
+
             using var memoryStream = new MemoryStream();
 
             using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
@@ -117,11 +108,11 @@ namespace Anno1800LogoModGenerator.Pages
 
                 var assetsText = @$"
 <ModOps>
-  <ModOp GUID='92' Type=""addNextSibling""> 	
+  <ModOp GUID=""92"" Type=""addNextSibling""> 	
   	";
-                for (int i = 0; i < Logos.Count; i++)
+                foreach (var logoFile in logoFiles)
                 {
-                    var guid = StartingGuid + i;
+                    var guid = logoFile.Item2;
                     assetsText += @$"
   	<Asset>
 	      <Template>PlayerLogo</Template>
@@ -145,13 +136,13 @@ namespace Anno1800LogoModGenerator.Pages
 
                 assetsText += @$"
   </ModOp>
-  <ModOp Type=""addPrevSibling"" GUID='500769' Path=""/Values/CreateGameScene/Logos/Item[Logo='501722']"">
+  <ModOp Type=""add"" GUID=""500769"" Path=""/Values/CreateGameScene/Logos"">
   	";
-                for (int i = 0; i < Logos.Count; i++)
+                foreach (var logoFile in logoFiles)
                 {
                     assetsText += @$"
       <Item>
-          <Logo>{StartingGuid + i}</Logo>
+          <Logo>{logoFile.Item2}</Logo>
       </Item>
           ";
                 }
@@ -169,11 +160,12 @@ namespace Anno1800LogoModGenerator.Pages
                     assetsWriter.Write(assetsText);
                 }
 
-                for (int i = 0; i < Logos.Count; i++)
+                foreach (var logoFile in logoFiles)
                 {
-                    var guid = StartingGuid + i;
-                    AddImageFile(archive, $"data/modgraphics/ui/logos/large/Logo_{guid}.png", Logos[i].Data);
-                    AddImageFile(archive, $"data/modgraphics/ui/logos/small/Logo_{guid}.png", Logos[i].DataSmall);
+                    var guid = logoFile.Item2;
+                    var (data, dataSmall) = GetIconData(logoFile.x);
+                    AddImageFile(archive, $"data/modgraphics/ui/logos/large/Logo_{guid}.png", data);
+                    AddImageFile(archive, $"data/modgraphics/ui/logos/small/Logo_{guid}.png", dataSmall);
                 }
             }
 
@@ -181,21 +173,51 @@ namespace Anno1800LogoModGenerator.Pages
             return memoryStream.ToArray();
         }
 
+        private static (byte[] data, byte[] dataSmall) GetIconData(string path)
+        {
+            using var image = Image.Load<Rgba32>(path);
+
+            image.Mutate(x => x.Resize(LargeSize, LargeSize));
+
+            for (var i = 0; i < image.Width; i++)
+            {
+                for (var j = 0; j < image.Height; j++)
+                {
+                    image[i, j] = new Rgba32(byte.MaxValue, byte.MaxValue, byte.MaxValue, image[i, j].A);
+                }
+            }
+
+            var bytes = image.SaveImageToByteArray();
+
+            image.Mutate(x => x.Resize(SmallSize, SmallSize));
+
+            var bytesSmall = image.SaveImageToByteArray();
+
+            return (bytes, bytesSmall);
+        }
+
         private static void AddImageFile(ZipArchive archive, string path, byte[] imageBytes)
         {
             var entry = archive.CreateEntry(path);
-            using var entryStream = entry.Open();
-            entryStream.Write(imageBytes, 0, imageBytes.Length);
+            using (var entryStream = entry.Open())
+            {
+                entryStream.Write(imageBytes, 0, imageBytes.Length);
+            }
 
+            var name = Path.GetFileName(path);
+            var tempPathFolder = Path.Combine(Directory.GetCurrentDirectory(), "temp");
+            Directory.CreateDirectory(tempPathFolder);
 
-            var test = ExecuteCmd(@$"annotex.exe ""{path.Split("/").Last()}.png"" -l=1", Directory.GetCurrentDirectory());
+            File.WriteAllBytes($"temp/{name}", imageBytes);
+            ExecuteCmd(@$"..\annotex.exe ""{name}"" -l=1", tempPathFolder);
+
+            var ddsBytes = File.ReadAllBytes($"temp/{name.Replace(".png", "_0.dds")}");
+
+            var entryDds = archive.CreateEntry(path.Replace(".png", "_0.dds"));
+            using var entryDdsStream = entryDds.Open();
+            entryDdsStream.Write(ddsBytes, 0, ddsBytes.Length);
         }
 
-
-        private static string ConvertPngToDds(string file, string outputFolder)
-        {
-            return ExecuteCmd(@$"annotex ""{file}.png"" -l={levels}", outputFolder);
-        }
 
         private static string ExecuteCmd(string command, string? workingDirectory = null)
         {
